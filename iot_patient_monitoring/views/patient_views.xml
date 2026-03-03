@@ -1,0 +1,45 @@
+<odoo>
+    <record id="view_patient_tree" model="ir.ui.view">
+        <field name="name">iot.patient.tree</field>
+        <field name="model">iot.patient</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="heart_rate"/>
+                <field name="temperature"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_patient_form" model="ir.ui.view">
+        <field name="name">iot.patient.form</field>
+        <field name="model">iot.patient</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="heart_rate"/>
+                        <field name="temperature"/>
+                        <field name="spo2"/>
+                        <field name="ecg_value"/>
+                        <field name="respiration"/>
+                        <field name="fall_detected"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_patient" model="ir.actions.act_window">
+        <field name="name">Patients</field>
+        <field name="res_model">iot.patient</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_iot_root" name="IoT Monitoring"/>
+    <menuitem id="menu_patient"
+              name="Patients"
+              parent="menu_iot_root"
+              action="action_patient"/>
+</odoo>
