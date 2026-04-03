@@ -1,45 +1,192 @@
 <odoo>
-    <record id="view_patient_tree" model="ir.ui.view">
-        <field name="name">iot.patient.tree</field>
+
+    <!-- ========================= -->
+    <!-- PATIENT LIST VIEW -->
+    <!-- ========================= -->
+    <record id="view_iot_patient_list" model="ir.ui.view">
+        <field name="name">iot.patient.list</field>
         <field name="model">iot.patient</field>
         <field name="arch" type="xml">
-            <tree>
+            <list>
                 <field name="name"/>
-                <field name="heart_rate"/>
                 <field name="temperature"/>
-            </tree>
+                <field name="spo2"/>
+                <field name="heart_rate"/>
+                <field name="status"/>
+                <field name="alert_level"/>
+                <field name="ai_prediction"/>
+                <field name="next_followup_date"/>
+                <field name="reminder_needed"/>
+                <field name="reminder_sent"/>
+            </list>
         </field>
     </record>
 
-    <record id="view_patient_form" model="ir.ui.view">
+    <!-- ========================= -->
+    <!-- PATIENT FORM VIEW -->
+    <!-- ========================= -->
+    <record id="view_iot_patient_form" model="ir.ui.view">
         <field name="name">iot.patient.form</field>
         <field name="model">iot.patient</field>
         <field name="arch" type="xml">
-            <form>
+            <form string="Patient IoT">
                 <sheet>
                     <group>
                         <field name="name"/>
-                        <field name="heart_rate"/>
                         <field name="temperature"/>
                         <field name="spo2"/>
-                        <field name="ecg_value"/>
-                        <field name="respiration"/>
-                        <field name="fall_detected"/>
+                        <field name="heart_rate"/>
+                        <field name="status"/>
+                        <field name="alert_level"/>
+                        <field name="ai_prediction" readonly="1"/>
+                        <field name="next_followup_date"/>
+                        <field name="reminder_needed" readonly="1"/>
+                        <field name="reminder_sent" readonly="1"/>
+                        <field name="doctor_email"/>
+                        <field name="notes"/>
                     </group>
                 </sheet>
             </form>
         </field>
     </record>
 
-    <record id="action_patient" model="ir.actions.act_window">
-        <field name="name">Patients</field>
-        <field name="res_model">iot.patient</field>
-        <field name="view_mode">tree,form</field>
+    <!-- ========================= -->
+    <!-- ALERT LIST VIEW -->
+    <!-- ========================= -->
+    <record id="view_iot_alert_list" model="ir.ui.view">
+        <field name="name">iot.alert.list</field>
+        <field name="model">iot.alert</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="patient_id"/>
+                <field name="alert_type"/>
+                <field name="alert_value"/>
+                <field name="alert_level"/>
+                <field name="alert_date"/>
+            </list>
+        </field>
     </record>
 
-    <menuitem id="menu_iot_root" name="IoT Monitoring"/>
-    <menuitem id="menu_patient"
+    <!-- ========================= -->
+    <!-- ALERT FORM VIEW -->
+    <!-- ========================= -->
+    <record id="view_iot_alert_form" model="ir.ui.view">
+        <field name="name">iot.alert.form</field>
+        <field name="model">iot.alert</field>
+        <field name="arch" type="xml">
+            <form string="Alerte">
+                <sheet>
+                    <group>
+                        <field name="patient_id"/>
+                        <field name="alert_type"/>
+                        <field name="alert_value"/>
+                        <field name="alert_level"/>
+                        <field name="alert_date"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- ECG LIST VIEW -->
+    <!-- ========================= -->
+    <record id="view_iot_ecg_list" model="ir.ui.view">
+        <field name="name">iot.ecg.list</field>
+        <field name="model">iot.ecg</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="patient_id"/>
+                <field name="ecg_value"/>
+                <field name="bpm"/>
+                <field name="signal_status"/>
+                <field name="sample_time"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- ECG FORM VIEW -->
+    <!-- ========================= -->
+    <record id="view_iot_ecg_form" model="ir.ui.view">
+        <field name="name">iot.ecg.form</field>
+        <field name="model">iot.ecg</field>
+        <field name="arch" type="xml">
+            <form string="ECG">
+                <sheet>
+                    <group>
+                        <field name="patient_id"/>
+                        <field name="ecg_value"/>
+                        <field name="bpm"/>
+                        <field name="signal_status"/>
+                        <field name="sample_time"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- ROOT MENU -->
+    <!-- ========================= -->
+    <menuitem id="menu_iot_root" name="IoT Monitoring" sequence="10"/>
+
+    <!-- ========================= -->
+    <!-- ACTIONS -->
+    <!-- ========================= -->
+    
+    <record id="action_iot_patient" model="ir.actions.act_window">
+        <field name="name">Patients IoT</field>
+        <field name="res_model">iot.patient</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_iot_alert" model="ir.actions.act_window">
+        <field name="name">Alerts</field>
+        <field name="res_model">iot.alert</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_iot_ecg" model="ir.actions.act_window">
+        <field name="name">ECG</field>
+        <field name="res_model">iot.ecg</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- MENUS -->
+    <!-- ========================= -->
+
+    <menuitem id="menu_iot_patient"
               name="Patients"
               parent="menu_iot_root"
-              action="action_patient"/>
+              action="action_iot_patient"
+              sequence="1"/>
+
+    <menuitem id="menu_iot_alert"
+              name="Alerts"
+              parent="menu_iot_root"
+              action="action_iot_alert"
+              sequence="2"/>
+
+    <menuitem id="menu_iot_ecg"
+              name="ECG"
+              parent="menu_iot_root"
+              action="action_iot_ecg"
+              sequence="3"/>
+
+    <!-- ========================= -->
+    <!-- CRON -->
+    <!-- ========================= -->
+    <record id="ir_cron_send_followup_reminders" model="ir.cron">
+        <field name="name">Send Follow-up Reminders</field>
+        <field name="model_id" ref="model_iot_patient"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_send_followup_reminders()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        
+        <field name="active">True</field>
+    </record>
+
 </odoo>

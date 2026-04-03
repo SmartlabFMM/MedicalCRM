@@ -4,10 +4,13 @@
     'summary': 'Medical IoT Monitoring System',
     'author': 'Ines Aouida',
     'category': 'Healthcare',
-    'depends': ['crm'],
+    'license': 'LGPL-3',
+    'depends': ['base'],
     'data': [
-    'views/patient_views.xml',
-],
+        'security/ir.model.access.csv',
+        'views/dashboard_views.xml',
+        'views/patient_views.xml',
+    ],
     'installable': True,
     'application': True,
 }

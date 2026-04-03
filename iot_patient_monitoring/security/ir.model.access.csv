@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_iot_patient_user,iot.patient.user,model_iot_patient,base.group_user,1,1,1,1
+access_iot_alert_user,iot.alert.user,model_iot_alert,base.group_user,1,1,1,1
+access_iot_ecg_user,iot.ecg.user,model_iot_ecg,base.group_user,1,1,1,1
+access_iot_dashboard_user,access.iot.dashboard.user,model_iot_dashboard,base.group_user,1,1,1,1
