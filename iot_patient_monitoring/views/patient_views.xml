@@ -32,19 +32,55 @@
             <form string="Patient IoT">
                 <sheet>
                     <group>
-                        <field name="name"/>
-                        <field name="temperature"/>
-                        <field name="spo2"/>
-                        <field name="heart_rate"/>
-                        <field name="status"/>
-                        <field name="alert_level"/>
-                        <field name="ai_prediction" readonly="1"/>
-                        <field name="next_followup_date"/>
-                        <field name="reminder_needed" readonly="1"/>
-                        <field name="reminder_sent" readonly="1"/>
-                        <field name="doctor_email"/>
+                        <group>
+                            <field name="name"/>
+                            <field name="temperature"/>
+                            <field name="spo2"/>
+                            <field name="heart_rate"/>
+                            <field name="status"/>
+                            <field name="alert_level"/>
+                        </group>
+                        <group>
+                            <field name="ai_prediction" readonly="1"/>
+                            <field name="next_followup_date"/>
+                            <field name="reminder_needed" readonly="1"/>
+                            <field name="reminder_sent" readonly="1"/>
+                            <field name="doctor_email"/>
+                        </group>
+                    </group>
+
+                    <group>
                         <field name="notes"/>
                     </group>
+
+                    <notebook>
+                        <page string="ECG">
+                            <group>
+                                <field name="ecg_chart_html" widget="html" nolabel="1" readonly="1"/>
+                            </group>
+                            <field name="ecg_ids" readonly="1">
+                                <list>
+                                    <field name="sample_time"/>
+                                    <field name="ecg_value"/>
+                                    <field name="bpm"/>
+                                    <field name="signal_status"/>
+                                </list>
+                            </field>
+                        </page>
+
+                        <page string="Alerts">
+                            <field name="alert_ids" readonly="1">
+                                <list>
+                                    <field name="alert_date"/>
+                                    <field name="alert_type"/>
+                                    <field name="alert_value"/>
+                                    <field name="alert_level"/>
+                                    <field name="is_seen"/>
+                                    <field name="escalation_sent"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>
@@ -63,6 +99,8 @@
                 <field name="alert_value"/>
                 <field name="alert_level"/>
                 <field name="alert_date"/>
+                <field name="is_seen"/>
+                <field name="escalation_sent"/>
             </list>
         </field>
     </record>
@@ -75,6 +113,13 @@
         <field name="model">iot.alert</field>
         <field name="arch" type="xml">
             <form string="Alerte">
+                <header>
+                    <button name="action_mark_as_seen"
+                            string="Marquer comme vue"
+                            type="object"
+                            class="btn-primary"
+                            invisible="is_seen"/>
+                </header>
                 <sheet>
                     <group>
                         <field name="patient_id"/>
@@ -82,6 +127,11 @@
                         <field name="alert_value"/>
                         <field name="alert_level"/>
                         <field name="alert_date"/>
+                        <field name="doctor_email"/>
+                        <field name="is_seen"/>
+                        <field name="seen_date" readonly="1"/>
+                        <field name="escalation_deadline" readonly="1"/>
+                        <field name="escalation_sent" readonly="1"/>
                     </group>
                 </sheet>
             </form>
@@ -134,7 +184,6 @@
     <!-- ========================= -->
     <!-- ACTIONS -->
     <!-- ========================= -->
-    
     <record id="action_iot_patient" model="ir.actions.act_window">
         <field name="name">Patients IoT</field>
         <field name="res_model">iot.patient</field>
@@ -156,7 +205,6 @@
     <!-- ========================= -->
     <!-- MENUS -->
     <!-- ========================= -->
-
     <menuitem id="menu_iot_patient"
               name="Patients"
               parent="menu_iot_root"
@@ -176,7 +224,7 @@
               sequence="3"/>
 
     <!-- ========================= -->
-    <!-- CRON -->
+    <!-- CRON: FOLLOW-UP REMINDERS -->
     <!-- ========================= -->
     <record id="ir_cron_send_followup_reminders" model="ir.cron">
         <field name="name">Send Follow-up Reminders</field>
@@ -185,7 +233,19 @@
         <field name="code">model.cron_send_followup_reminders()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">days</field>
-        
+        <field name="active">True</field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- CRON: UNSEEN CRITICAL ALERTS -->
+    <!-- ========================= -->
+    <record id="ir_cron_check_unseen_critical_alerts" model="ir.cron">
+        <field name="name">Check Unseen Critical Alerts</field>
+        <field name="model_id" ref="model_iot_alert"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_check_unseen_critical_alerts()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
         <field name="active">True</field>
     </record>
 

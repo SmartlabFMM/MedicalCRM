@@ -69,12 +69,10 @@ def on_message(client, userdata, msg):
         heart_rate = int(data.get("heart_rate", 0))
         ecg_value = float(data.get("ecg_value", 0))
 
-        # Règles classiques
         patient_status, alert_level, alert_message = evaluate_patient_status(
             temperature, spo2, heart_rate
         )
 
-        # IA prediction
         ai_prediction = predict_risk_level(temperature, heart_rate, spo2)
 
         print(
@@ -83,27 +81,51 @@ def on_message(client, userdata, msg):
             f"| IA={ai_prediction}"
         )
 
-        # 1) create patient
-        patient_id = models.execute_kw(
+        # 1) search patient by name
+        patient_ids = models.execute_kw(
             db,
             uid,
             password,
             'iot.patient',
-            'create',
-            [{
-                'name': name,
-                'temperature': temperature,
-                'spo2': spo2,
-                'heart_rate': heart_rate,
-                'status': patient_status,
-                'alert_level': alert_level,
-                'ai_prediction': ai_prediction,
-            }]
+            'search',
+            [[('name', '=', name)]],
+            {'limit': 1}
         )
 
-        print(f"Patient créé dans Odoo avec ID : {patient_id}")
+        patient_vals = {
+            'name': name,
+            'temperature': temperature,
+            'spo2': spo2,
+            'heart_rate': heart_rate,
+            'status': patient_status,
+            'alert_level': alert_level,
+            'ai_prediction': ai_prediction,
+        }
 
-        # 2) create alert if needed
+        # 2) update existing patient or create new one
+        if patient_ids:
+            patient_id = patient_ids[0]
+            models.execute_kw(
+                db,
+                uid,
+                password,
+                'iot.patient',
+                'write',
+                [[patient_id], patient_vals]
+            )
+            print(f"Patient mis à jour dans Odoo avec ID : {patient_id}")
+        else:
+            patient_id = models.execute_kw(
+                db,
+                uid,
+                password,
+                'iot.patient',
+                'create',
+                [patient_vals]
+            )
+            print(f"Patient créé dans Odoo avec ID : {patient_id}")
+
+        # 3) create alert if needed
         if alert_message:
             alert_value = (
                 f"T={temperature}°C, SpO2={spo2}%, HR={heart_rate} bpm, IA={ai_prediction}"
@@ -125,7 +147,7 @@ def on_message(client, userdata, msg):
 
             print(f"Alerte créée avec ID : {alert_id}")
 
-        # 3) create ECG sample
+        # 4) create ECG sample for same patient
         signal_status = "normal"
         if alert_level == "warning":
             signal_status = "warning"

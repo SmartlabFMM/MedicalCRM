@@ -5,7 +5,7 @@
     'author': 'Ines Aouida',
     'category': 'Healthcare',
     'license': 'LGPL-3',
-    'depends': ['base'],
+    'depends': ['base', 'web', 'mail'],
     'data': [
         'security/ir.model.access.csv',
         'views/dashboard_views.xml',
