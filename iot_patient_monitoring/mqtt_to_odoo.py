@@ -1,12 +1,15 @@
 import json
 import xmlrpc.client
 import paho.mqtt.client as mqtt
-import joblib
-import pandas as pd
+
+# ---------------- MQTT config ----------------
+BROKER = "192.168.137.144"
+PORT = 1883
+TOPIC = "patient/data"
 
 # ---------------- Odoo config ----------------
 url = "http://localhost:8069"
-db = "odoo_db"
+db = "odoo19_db"
 username = "admin"
 password = "admin"
 
@@ -14,169 +17,103 @@ common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
 uid = common.authenticate(db, username, password, {})
 
 if not uid:
-    print("Échec de connexion à Odoo")
+    print("Echec de connexion a Odoo")
     exit()
 
 models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
 
-# ---------------- Load AI model ----------------
-try:
-    model = joblib.load("risk_model.pkl")
-    print("Modèle IA chargé avec succès.")
-except Exception as e:
-    print("Erreur lors du chargement du modèle IA :", e)
-    exit()
 
-# ---------------- Rules ----------------
-def evaluate_patient_status(temperature, spo2, heart_rate):
-    if temperature > 38 or spo2 < 92:
-        return "follow_up", "critical", "Température élevée ou SpO2 critique"
-    elif temperature >= 37.5 or spo2 < 95 or heart_rate < 60 or heart_rate > 100:
-        return "prospect", "warning", "Valeurs à surveiller"
-    else:
-        return "retention", "stable", None
-
-# ---------------- AI prediction ----------------
-def predict_risk_level(temperature, heart_rate, spo2):
-    sample = pd.DataFrame([{
-        "Temperature": temperature,
-        "Heart_Rate": heart_rate,
-        "Oxygen_Saturation": spo2
-    }])
-    prediction = model.predict(sample)[0]
-    return prediction
-
-# ---------------- MQTT callbacks ----------------
 def on_connect(client, userdata, flags, rc):
-    print("Connecté à MQTT")
-    client.subscribe("patient/data")
-    print("Abonné à : patient/data")
+    if rc == 0:
+        print("Connecte a MQTT")
+        client.subscribe(TOPIC)
+        print(f"Abonne a : {TOPIC}")
+    else:
+        print("Erreur connexion MQTT, code:", rc)
+
 
 def on_message(client, userdata, msg):
     payload = msg.payload.decode().strip()
-    print(f"Message reçu sur {msg.topic}: {payload}")
+    print(f"\nMessage recu sur {msg.topic}: {payload}")
 
     if not payload:
-        print("Payload vide, message ignoré.")
+        print("Payload vide, message ignore.")
         return
 
     try:
         data = json.loads(payload)
 
-        name = data.get("name", "Patient MQTT")
-        temperature = float(data.get("temperature", 0))
-        spo2 = float(data.get("spo2", 0))
-        heart_rate = int(data.get("heart_rate", 0))
-        ecg_value = float(data.get("ecg_value", 0))
+        device_id = data.get("device_id")
+        patient_code = data.get("patient_code") or data.get("code")
 
-        patient_status, alert_level, alert_message = evaluate_patient_status(
-            temperature, spo2, heart_rate
-        )
-
-        ai_prediction = predict_risk_level(temperature, heart_rate, spo2)
+        temperature = float(data.get("temperature", data.get("body_temperature", 0)) or 0)
+        spo2 = float(data.get("spo2", data.get("SpO2", 0)) or 0)
+        heart_rate = int(data.get("heart_rate", data.get("pulse", 0)) or 0)
 
         print(
-            f"Patient={name} | Temp={temperature} | SpO2={spo2} | HR={heart_rate} "
-            f"| ECG={ecg_value} | Status={patient_status} | Alert={alert_level} "
-            f"| IA={ai_prediction}"
+            f"Device={device_id} | Code patient={patient_code} | "
+            f"Temp={temperature} | SpO2={spo2} | BPM={heart_rate}"
         )
 
-        # 1) search patient by name
+        # Version finale : recherche par device_id.
+        # Fallback patient_code gardé seulement pour compatibilité avec anciens tests.
+        if device_id:
+            domain = [("device_id", "=", device_id)]
+        elif patient_code:
+            domain = [("patient_code", "=", patient_code)]
+        else:
+            print("Aucun device_id/patient_code dans le message. Message ignore.")
+            return
+
         patient_ids = models.execute_kw(
-            db,
-            uid,
-            password,
-            'iot.patient',
-            'search',
-            [[('name', '=', name)]],
-            {'limit': 1}
+            db, uid, password,
+            "iot.patient", "search",
+            [domain],
+            {"limit": 1}
         )
+
+        if not patient_ids:
+            print("Aucun patient associe a ce device_id/code. Message ignore.")
+            print("Dans Odoo, associe le Device ID du patient, ex : RPI-001.")
+            return
+
+        patient_id = patient_ids[0]
 
         patient_vals = {
-            'name': name,
-            'temperature': temperature,
-            'spo2': spo2,
-            'heart_rate': heart_rate,
-            'status': patient_status,
-            'alert_level': alert_level,
-            'ai_prediction': ai_prediction,
+            "temperature": temperature,
+            "spo2": spo2,
+            "heart_rate": heart_rate,
         }
 
-        # 2) update existing patient or create new one
-        if patient_ids:
-            patient_id = patient_ids[0]
-            models.execute_kw(
-                db,
-                uid,
-                password,
-                'iot.patient',
-                'write',
-                [[patient_id], patient_vals]
-            )
-            print(f"Patient mis à jour dans Odoo avec ID : {patient_id}")
-        else:
-            patient_id = models.execute_kw(
-                db,
-                uid,
-                password,
-                'iot.patient',
-                'create',
-                [patient_vals]
-            )
-            print(f"Patient créé dans Odoo avec ID : {patient_id}")
-
-        # 3) create alert if needed
-        if alert_message:
-            alert_value = (
-                f"T={temperature}°C, SpO2={spo2}%, HR={heart_rate} bpm, IA={ai_prediction}"
-            )
-
-            alert_id = models.execute_kw(
-                db,
-                uid,
-                password,
-                'iot.alert',
-                'create',
-                [{
-                    'patient_id': patient_id,
-                    'alert_type': alert_message,
-                    'alert_value': alert_value,
-                    'alert_level': alert_level,
-                }]
-            )
-
-            print(f"Alerte créée avec ID : {alert_id}")
-
-        # 4) create ECG sample for same patient
-        signal_status = "normal"
-        if alert_level == "warning":
-            signal_status = "warning"
-        elif alert_level == "critical":
-            signal_status = "critical"
-
-        ecg_id = models.execute_kw(
-            db,
-            uid,
-            password,
-            'iot.ecg',
-            'create',
-            [{
-                'patient_id': patient_id,
-                'ecg_value': ecg_value,
-                'bpm': heart_rate,
-                'signal_status': signal_status,
-            }]
+        models.execute_kw(
+            db, uid, password,
+            "iot.patient", "write",
+            [[patient_id], patient_vals]
         )
 
-        print(f"ECG créé avec ID : {ecg_id}")
+        print(f"Patient mis a jour dans Odoo avec ID : {patient_id}")
+
+        # ECG: mesure ponctuelle. Envoyer ecg_value seulement quand une mesure ECG est disponible.
+        if "ecg_value" in data and data.get("ecg_value") not in (None, ""):
+            ecg_value = float(data.get("ecg_value") or 0)
+            ecg_id = models.execute_kw(
+                db, uid, password,
+                "iot.ecg", "create",
+                [{
+                    "patient_id": patient_id,
+                    "ecg_value": ecg_value,
+                    "bpm": heart_rate,
+                }]
+            )
+            print(f"ECG cree avec ID : {ecg_id}")
 
     except Exception as e:
         print("Erreur :", e)
 
-# ---------------- MQTT client ----------------
+
 client = mqtt.Client()
 client.on_connect = on_connect
 client.on_message = on_message
 
-client.connect("localhost", 1883, 60)
+client.connect(BROKER, PORT, 60)
 client.loop_forever()

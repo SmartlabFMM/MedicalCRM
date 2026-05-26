@@ -1,5 +1,6 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_iot_patient_user,iot.patient.user,model_iot_patient,base.group_user,1,1,1,1
-access_iot_alert_user,iot.alert.user,model_iot_alert,base.group_user,1,1,1,1
-access_iot_ecg_user,iot.ecg.user,model_iot_ecg,base.group_user,1,1,1,1
-access_iot_dashboard_user,access.iot.dashboard.user,model_iot_dashboard,base.group_user,1,1,1,1
+access_iot_patient,iot.patient,model_iot_patient,,1,1,1,1
+access_iot_alert,iot.alert,model_iot_alert,,1,1,1,1
+access_iot_ecg,iot.ecg,model_iot_ecg,,1,1,1,1
+access_iot_dashboard,iot.dashboard,model_iot_dashboard,,1,1,1,1
+access_iot_vital_history,iot.vital.history,model_iot_vital_history,,1,1,1,1
