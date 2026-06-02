@@ -21,13 +21,7 @@ class Patient(models.Model):
                             help="Identifiant unique du dispositif IoT associé au patient, ex. RPI-001.")
     doctor_id = fields.Many2one('res.users', string="Médecin responsable")
     doctor_email = fields.Char(string="Email du médecin")
-    floor = fields.Selection([
-        ('1', 'Étage 1'),
-        ('2', 'Étage 2'),
-        ('3', 'Étage 3'),
-        ('4', 'Étage 4'),
-        ('5', 'Étage 5'),
-    ], string="Étage")
+    floor = fields.Integer(string="Étage")
     room = fields.Char(string="Chambre")
 
     temperature = fields.Float(string="🌡️ Température (°C)")
@@ -70,17 +64,31 @@ class Patient(models.Model):
         sanitize=False
     )
 
+    auto_refresh_html = fields.Html(
+        string="Auto refresh",
+        compute="_compute_auto_refresh_html",
+        sanitize=False
+    )
+
+    def _compute_auto_refresh_html(self):
+        refresh_script = """
+            <iframe style="display:none;width:0;height:0;border:0;"
+                    srcdoc="&lt;script&gt;setTimeout(function(){parent.location.reload();}, 10000);&lt;/script&gt;"></iframe>
+        """
+        for rec in self:
+            rec.auto_refresh_html = refresh_script
+
     @api.onchange('doctor_id')
     def _onchange_doctor_id(self):
         for rec in self:
             if rec.doctor_id and rec.doctor_id.email:
                 rec.doctor_email = rec.doctor_id.email
 
-    @api.depends('alert_ids.is_seen', 'alert_ids.alert_level')
+    @api.depends('alert_ids.email_sent', 'alert_ids.alert_level')
     def _compute_alert_unseen(self):
         for rec in self:
             rec.alert_unseen = any(
-                alert.alert_level == 'warning' and not alert.is_seen
+                alert.alert_level == 'warning' and not alert.email_sent
                 for alert in rec.alert_ids
             )
 
@@ -118,7 +126,7 @@ class Patient(models.Model):
                     ('patient_id', '=', rec.id),
                     ('alert_level', '=', 'warning'),
                     ('alert_type', '=', alert_type),
-                    ('is_seen', '=', False),
+                    ('email_sent', '=', False),
                 ], limit=1)
 
                 if not existing_alert:
@@ -305,32 +313,80 @@ class Patient(models.Model):
             ecg_records = rec.ecg_ids.sorted(lambda r: r.sample_time or r.id)
             ecg_points = [float(e.ecg_value or 0) for e in ecg_records]
 
+            refresh_iframe = """
+                <iframe style="display:none;width:0;height:0;border:0;"
+                        srcdoc="&lt;script&gt;setTimeout(function(){parent.location.reload();}, 10000);&lt;/script&gt;"></iframe>
+            """
+
             if len(ecg_points) < 2:
-                rec.ecg_chart_html = """
+                rec.ecg_chart_html = refresh_iframe + """
                     <div style="padding:18px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;">
                         Aucun signal ECG suffisant pour afficher la courbe.
                     </div>
                 """
                 continue
 
-            width = 900
-            height = 280
+            width = 960
+            height = 330
+            left = 62
+            right = 22
+            top = 26
+            bottom = 52
+
             min_val = min(ecg_points)
             max_val = max(ecg_points)
             if max_val == min_val:
                 max_val = min_val + 1
 
+            margin = (max_val - min_val) * 0.10
+            min_axis = min_val - margin
+            max_axis = max_val + margin
+
             points_str = []
+            plot_w = width - left - right
+            plot_h = height - top - bottom
+
             for i, val in enumerate(ecg_points):
-                x = (i / max(len(ecg_points) - 1, 1)) * (width - 30) + 15
-                y = height - (((val - min_val) / (max_val - min_val)) * (height - 50) + 25)
+                x = left + (i / max(len(ecg_points) - 1, 1)) * plot_w
+                y = top + ((max_axis - val) / (max_axis - min_axis)) * plot_h
                 points_str.append(f"{x:.1f},{y:.1f}")
 
+            y_ticks = []
+            for k in range(5):
+                ratio = k / 4
+                val = max_axis - ratio * (max_axis - min_axis)
+                y = top + ratio * plot_h
+                y_ticks.append((y, val))
+
+            x_ticks = []
+            for k in range(5):
+                ratio = k / 4
+                sample = round(ratio * (len(ecg_points) - 1))
+                x = left + ratio * plot_w
+                x_ticks.append((x, sample))
+
+            y_tick_html = "".join(
+                f"""
+                <line x1="{left-5}" y1="{y:.1f}" x2="{width-right}" y2="{y:.1f}" stroke="#fee2e2" stroke-width="1"/>
+                <text x="{left-10}" y="{y+4:.1f}" text-anchor="end" fill="#475569" font-size="12">{val:.2f}</text>
+                """
+                for y, val in y_ticks
+            )
+
+            x_tick_html = "".join(
+                f"""
+                <line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{height-bottom+5}" stroke="#fee2e2" stroke-width="1"/>
+                <text x="{x:.1f}" y="{height-28}" text-anchor="middle" fill="#475569" font-size="12">{sample}</text>
+                """
+                for x, sample in x_ticks
+            )
+
             rec.ecg_chart_html = f"""
+                {refresh_iframe}
                 <div style="margin-top:10px;background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:14px;">
                     <div style="font-weight:800;margin-bottom:10px;color:#111827;">Signal ECG enregistré</div>
-                    <svg width="100%" height="300" viewBox="0 0 {width} {height}" preserveAspectRatio="none"
-                         style="background:#fff7f7;border:1px solid #fecaca;border-radius:12px;">
+                    <svg width="100%" height="360" viewBox="0 0 {width} {height}" preserveAspectRatio="none"
+                         style="background:#fff7f7;border:1px solid #fecaca;border-radius:12px;display:block;">
                         <defs>
                             <pattern id="smallGrid" width="20" height="20" patternUnits="userSpaceOnUse">
                                 <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#fee2e2" stroke-width="1"/>
@@ -340,14 +396,21 @@ class Patient(models.Model):
                                 <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#fecaca" stroke-width="1"/>
                             </pattern>
                         </defs>
-                        <rect width="100%" height="100%" fill="url(#grid)"/>
-                        <polyline fill="none" stroke="#dc2626" stroke-width="3.5"
+                        <rect x="{left}" y="{top}" width="{plot_w}" height="{plot_h}" fill="url(#grid)"/>
+
+                        {y_tick_html}
+                        {x_tick_html}
+
+                        <line x1="{left}" y1="{top}" x2="{left}" y2="{height-bottom}" stroke="#475569" stroke-width="1.5"/>
+                        <line x1="{left}" y1="{height-bottom}" x2="{width-right}" y2="{height-bottom}" stroke="#475569" stroke-width="1.5"/>
+
+                        <text x="{width/2}" y="{height-8}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">Échantillons</text>
+                        <text x="18" y="{height/2}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700" transform="rotate(-90 18 {height/2})">Valeur ECG</text>
+
+                        <polyline fill="none" stroke="#dc2626" stroke-width="3.2"
                                   stroke-linejoin="round" stroke-linecap="round"
                                   points="{' '.join(points_str)}"/>
                     </svg>
-                    <div style="color:#6b7280;margin-top:8px;font-size:13px;">
-                        Affichage uniquement du signal ECG, sans classification normal/anormal.
-                    </div>
                 </div>
             """
 
@@ -366,20 +429,31 @@ class IotAlert(models.Model):
     ], string="Niveau", required=True, default='warning')
 
     alert_date = fields.Datetime(string="Date", default=fields.Datetime.now)
-    is_seen = fields.Boolean(string="Alerte vue", default=False)
-    seen_date = fields.Datetime(string="Date de consultation")
     doctor_email = fields.Char(string="Email du médecin")
     email_sent = fields.Boolean(string="Email envoyé", default=False)
     email_sent_date = fields.Datetime(string="Date d'envoi email")
 
-    is_seen_display = fields.Char(string="Alerte vue", compute="_compute_display_status")
+    auto_refresh_html = fields.Html(
+        string="Auto refresh",
+        compute="_compute_auto_refresh_html",
+        sanitize=False
+    )
+
     email_sent_display = fields.Char(string="Email", compute="_compute_display_status")
 
-    @api.depends('is_seen', 'email_sent')
+    def _compute_auto_refresh_html(self):
+        refresh_script = """
+            <iframe style="display:none;width:0;height:0;border:0;"
+                    srcdoc="&lt;script&gt;setTimeout(function(){parent.location.reload();}, 10000);&lt;/script&gt;"></iframe>
+        """
+        for rec in self:
+            rec.auto_refresh_html = refresh_script
+    
+    @api.depends('email_sent')
     def _compute_display_status(self):
         for rec in self:
-            rec.is_seen_display = "Vue" if rec.is_seen else "Non vue"
             rec.email_sent_display = "Envoyé" if rec.email_sent else "Non envoyé"
+
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -393,7 +467,7 @@ class IotAlert(models.Model):
 
     def _send_unseen_alert_email(self):
         for rec in self:
-            if rec.email_sent or rec.is_seen or not rec.doctor_email:
+            if rec.email_sent or not rec.doctor_email:
                 continue
 
             patient_name = html.escape(rec.patient_id.name or '')
@@ -403,7 +477,7 @@ class IotAlert(models.Model):
 
             body_html = f"""
                 <p>Bonjour,</p>
-                <p>Une alerte concernant le patient <b>{patient_name}</b> n’a pas été consultée dans le délai prévu.</p>
+                <p>Une alerte médicale a été détectée pour le patient <b>{patient_name}</b>.</p>
                 <p><b>État :</b> Warning<br/>
                 <b>Chambre :</b> {room}</p>
                 <p><b>Anomalies détectées :</b></p>
@@ -413,7 +487,7 @@ class IotAlert(models.Model):
             """
 
             self.env['mail.mail'].create({
-                'subject': f"Alerte MedIoT non consultée - Patient {rec.patient_id.name}",
+                'subject': f"Alerte médicale MedIoT - Patient {rec.patient_id.name}",
                 'body_html': body_html,
                 'email_to': rec.doctor_email,
             }).send()
@@ -422,29 +496,17 @@ class IotAlert(models.Model):
                 'email_sent_date': fields.Datetime.now(),
             })
 
-    def action_mark_as_seen(self):
-        for rec in self:
-            rec.write({
-                'is_seen': True,
-                'seen_date': fields.Datetime.now(),
-            })
-
+   
     @api.model
-    def cron_check_unseen_alerts(self):
-        delay_limit = fields.Datetime.now() - timedelta(minutes=2)
+    def cron_send_alert_emails(self):
+        delay_limit = fields.Datetime.now() - timedelta(minutes=1)
         alerts = self.search([
             ('alert_level', '=', 'warning'),
-            ('is_seen', '=', False),
             ('email_sent', '=', False),
             ('alert_date', '<=', delay_limit),
         ])
         alerts._send_unseen_alert_email()
         return True
-
-    @api.model
-    def cron_check_unseen_critical_alerts(self):
-        # Compatibilité avec une ancienne action planifiée, si elle existe déjà.
-        return self.cron_check_unseen_alerts()
 
 
 

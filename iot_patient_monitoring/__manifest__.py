@@ -1,5 +1,5 @@
 {
-    'name': 'IoT Patient Monitoring',
+    'name': 'Surveillance médicale IoT',
     'version': '1.0',
     'summary': 'Medical IoT Monitoring System',
     'author': 'Ines Aouida',

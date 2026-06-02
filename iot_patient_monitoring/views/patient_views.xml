@@ -4,6 +4,7 @@
 <field name="model">iot.patient</field>
 <field name="arch" type="xml">
 <list string="Patients" decoration-warning="status == 'warning'" decoration-success="status == 'stable'">
+<field name="auto_refresh_html" widget="html" column_invisible="1"/>
 <field name="patient_code" string="Code"/>
 <field name="device_id" string="Device ID"/>
 <field name="name" string="Nom du patient"/>
@@ -13,11 +14,10 @@
 <field name="room" string="Chambre"/>
 <field name="doctor_id" string="Médecin"/>
 <field name="spo2" string="💧 SpO₂ (%)" readonly="1"/>
-<field name="heart_rate" string="❤️ BPM"/>
-<field name="temperature" string="🌡️ Température"/>
-<field name="last_measure_date" string="Dernière mesure"/>
+<field name="heart_rate" string="❤️ BPM" readonly="1"/>
+<field name="temperature" string="🌡️ Température" readonly="1"/>
+<field name="last_measure_date" string="Dernière mesure" readonly="1"/>
 <field name="status" string="État" widget="badge" decoration-success="status == 'stable'" decoration-warning="status == 'warning'"/>
-<field name="alert_unseen" string="Alerte non vue"/>
 </list>
 </field>
 </record>
@@ -25,13 +25,16 @@
 <field name="name">iot.patient.form</field>
 <field name="model">iot.patient</field>
 <field name="arch" type="xml">
-<form string="Patient IoT">
+<form string="Patient">
 <sheet>
-<div class="alert alert-warning" invisible="status != 'warning'">
+<div class="d-none">
+<field name="auto_refresh_html" widget="html" nolabel="1" readonly="1"/>
+</div>
+<div class="alert alert-warning" role="alert" invisible="status != 'warning'">
 <strong>Warning :</strong>
 ce patient doit être surveillé.
 </div>
-<div class="alert alert-success" invisible="status != 'stable'">
+<div class="alert alert-success" role="status" invisible="status != 'stable'">
 <strong>Stable :</strong>
 les mesures sont dans les seuils définis.
 </div>
@@ -51,42 +54,25 @@ les mesures sont dans les seuils définis.
 <field name="spo2" string="💧 SpO₂ (%)" readonly="1"/>
 <field name="heart_rate" string="❤️ Fréquence cardiaque (BPM)" readonly="1"/>
 <field name="temperature" string="🌡️ Température (°C)" readonly="1"/>
-<field name="status" widget="badge" readonly="1"/>
 <field name="last_measure_date" string="Dernière mesure" readonly="1"/>
-<field name="alert_unseen" readonly="1"/>
+<field name="status" widget="badge" readonly="1"/>
 </group>
 </group>
 <group string="Notes médicales">
 <field name="notes" nolabel="1" placeholder="Ajouter des notes médicales..."/>
 </group>
-<notebook>
-<page string="Courbes">
-<group col="1">
-<separator string="Courbes SpO₂ / BPM / Température"/>
-<field name="vital_chart_html" widget="html" nolabel="1" readonly="1" colspan="4"/>
-<separator string="Courbe ECG"/>
+<group col="1" string="Courbe ECG">
 <field name="ecg_chart_html" widget="html" nolabel="1" readonly="1" colspan="4"/>
 </group>
-<field name="ecg_ids" readonly="1">
-<list string="Historique ECG">
+<group col="1" string="Valeurs ECG enregistrées">
+<field name="ecg_ids" nolabel="1" readonly="1">
+<list string="Valeurs ECG" create="false" edit="false" delete="false">
 <field name="sample_time" string="Date"/>
 <field name="ecg_value" string="Valeur ECG"/>
-<field name="bpm" string="❤️ BPM"/>
+<field name="bpm" string="BPM"/>
 </list>
 </field>
-</page>
-<page string="Alertes">
-<field name="alert_ids" readonly="1">
-<list string="Alertes patient" decoration-warning="alert_level == 'warning'" decoration-success="is_seen">
-<field name="alert_date" string="Date"/>
-<field name="alert_type" string="Anomalies détectées"/>
-<field name="alert_level" string="Niveau" widget="badge" decoration-warning="alert_level == 'warning'"/>
-<field name="is_seen" string="Vue"/>
-<field name="email_sent" string="Email envoyé"/>
-</list>
-</field>
-</page>
-</notebook>
+</group>
 </sheet>
 </form>
 </field>
@@ -95,14 +81,13 @@ les mesures sont dans les seuils définis.
 <field name="name">iot.alert.list</field>
 <field name="model">iot.alert</field>
 <field name="arch" type="xml">
-<list string="Alertes médicales" create="false" decoration-warning="alert_level == 'warning'" decoration-success="is_seen">
+<list string="Alertes médicales" create="false" decoration-warning="alert_level == 'warning'">
 <field name="patient_id" string="Patient"/>
 <field name="alert_type" string="Anomalies détectées"/>
 <field name="alert_level" string="Niveau" widget="badge" decoration-warning="alert_level == 'warning'"/>
 <field name="alert_date" string="Date"/>
-<field name="is_seen_display" string="Alerte vue"/>
-<field name="email_sent_display" string="Email envoyé"/>
 <field name="doctor_email" string="Email du médecin"/>
+<field name="email_sent_display" string="Email envoyé"/>
 </list>
 </field>
 </record>
@@ -110,57 +95,26 @@ les mesures sont dans les seuils définis.
 <field name="name">iot.alert.form</field>
 <field name="model">iot.alert</field>
 <field name="arch" type="xml">
-<form string="Alerte médicale" create="false">
-<header>
-<button name="action_mark_as_seen" string="Marquer comme vue" type="object" class="btn-primary" invisible="is_seen"/>
-</header>
+<form string="Alerte médicale" create="false" edit="false">
 <sheet>
-<div class="alert alert-warning" invisible="alert_level != 'warning'">
+<div class="d-none">
+<field name="auto_refresh_html" widget="html" nolabel="1" readonly="1"/>
+</div>
+<div class="alert alert-warning" role="alert" invisible="alert_level != 'warning'">
 <strong>Warning :</strong>
 patient à surveiller.
 </div>
 <group>
 <group string="Alerte">
-<field name="patient_id"/>
-<field name="alert_type" string="Anomalies détectées"/>
-<field name="alert_level" widget="badge"/>
-<field name="alert_date"/>
+<field name="patient_id" readonly="1"/>
+<field name="alert_type" string="Anomalies détectées" readonly="1"/>
+<field name="alert_level" string="Niveau" widget="badge" readonly="1"/>
+<field name="alert_date" string="Date" readonly="1"/>
 </group>
-<group string="Suivi">
-<field name="doctor_email" string="Email du médecin"/>
-<field name="is_seen" string="Alerte vue"/>
-<field name="seen_date" string="Date de consultation" readonly="1"/>
+<group string="Email">
+<field name="doctor_email" string="Email du médecin" readonly="1"/>
 <field name="email_sent" string="Email envoyé" readonly="1"/>
-<field name="email_sent_date" string="Date d'envoi email" readonly="1"/>
 </group>
-</group>
-</sheet>
-</form>
-</field>
-</record>
-<record id="view_iot_ecg_list" model="ir.ui.view">
-<field name="name">iot.ecg.list</field>
-<field name="model">iot.ecg</field>
-<field name="arch" type="xml">
-<list string="ECG" create="false">
-<field name="patient_id" string="Patient"/>
-<field name="ecg_value" string="Valeur ECG"/>
-<field name="bpm" string="❤️ BPM"/>
-<field name="sample_time" string="Date"/>
-</list>
-</field>
-</record>
-<record id="view_iot_ecg_form" model="ir.ui.view">
-<field name="name">iot.ecg.form</field>
-<field name="model">iot.ecg</field>
-<field name="arch" type="xml">
-<form string="ECG" create="false">
-<sheet>
-<group string="Détails ECG">
-<field name="patient_id"/>
-<field name="ecg_value"/>
-<field name="bpm"/>
-<field name="sample_time"/>
 </group>
 </sheet>
 </form>
@@ -177,13 +131,6 @@ patient à surveiller.
 <field name="view_mode">list,form</field>
 <field name="context">{'create': False}</field>
 </record>
-<record id="action_iot_ecg" model="ir.actions.act_window">
-<field name="name">ECG</field>
-<field name="res_model">iot.ecg</field>
-<field name="view_mode">list,form</field>
-<field name="context">{'create': False}</field>
-</record>
 <menuitem id="menu_iot_patient" name="Patients" parent="menu_iot_root" action="action_iot_patient" sequence="1"/>
 <menuitem id="menu_iot_alert" name="Alertes" parent="menu_iot_root" action="action_iot_alert" sequence="2"/>
-<menuitem id="menu_iot_ecg" name="ECG" parent="menu_iot_root" action="action_iot_ecg" sequence="3"/>
 </odoo>

@@ -1,10 +1,10 @@
 <odoo>
-<menuitem id="menu_iot_root" name="IoT Monitoring" sequence="10"/>
+<menuitem id="menu_iot_root" name="Medical CRM" sequence="10"/>
 <record id="view_iot_dashboard_form" model="ir.ui.view">
 <field name="name">iot.dashboard.form</field>
 <field name="model">iot.dashboard</field>
 <field name="arch" type="xml">
-<form string="MedIoT Dashboard" create="false" edit="false" delete="false">
+<form string="Medical CRM" create="false" edit="false" delete="false">
 <sheet>
 <field name="dashboard_html" widget="html" nolabel="1"/>
 </sheet>
@@ -12,15 +12,15 @@
 </field>
 </record>
 <record id="iot_dashboard_main" model="iot.dashboard">
-<field name="name">MedIoT Command Center</field>
+<field name="name">Medical CRM</field>
 </record>
 <record id="action_iot_dashboard" model="ir.actions.act_window">
-<field name="name">Dashboard</field>
+<field name="name">Tableau de bord</field>
 <field name="res_model">iot.dashboard</field>
 <field name="view_mode">form</field>
 <field name="view_id" ref="view_iot_dashboard_form"/>
 <field name="res_id" ref="iot_dashboard_main"/>
 <field name="target">current</field>
 </record>
-<menuitem id="menu_iot_dashboard" name="Dashboard" parent="menu_iot_root" action="action_iot_dashboard" sequence="0"/>
+<menuitem id="menu_iot_dashboard" name="Tableau de bord" parent="menu_iot_root" action="action_iot_dashboard" sequence="0"/>
 </odoo>

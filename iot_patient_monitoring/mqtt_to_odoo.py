@@ -1,119 +1,222 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import json
+import time
 import xmlrpc.client
+from datetime import datetime, timedelta
+
 import paho.mqtt.client as mqtt
 
-# ---------------- MQTT config ----------------
-BROKER = "192.168.137.144"
-PORT = 1883
-TOPIC = "patient/data"
 
-# ---------------- Odoo config ----------------
-url = "http://localhost:8069"
-db = "odoo19_db"
-username = "admin"
-password = "admin"
+# ==========================================================
+# CONFIGURATION MQTT
+# ==========================================================
 
-common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
-uid = common.authenticate(db, username, password, {})
+MQTT_BROKER = "192.168.137.144"
+MQTT_PORT = 1883
+MQTT_TOPIC = "patient/data"
+
+
+# ==========================================================
+# CONFIGURATION ODOO
+# ==========================================================
+
+ODOO_URL = "http://localhost:8069"
+ODOO_DB = "odoo19_db"
+ODOO_USERNAME = "admin"
+ODOO_PASSWORD = "admin"   # change selon ton mot de passe admin
+
+
+# ==========================================================
+# MAPPING DEVICE → PATIENT
+# ==========================================================
+# Si ton Raspberry envoie device_id = RPI-001,
+# ici on dit que RPI-001 correspond au patient P-00001 dans Odoo.
+
+DEVICE_PATIENT_MAP = {
+    "RPI-001": "P-00028",
+}
+
+
+# ==========================================================
+# CONNEXION ODOO
+# ==========================================================
+
+common = xmlrpc.client.ServerProxy(f"{ODOO_URL}/xmlrpc/2/common")
+uid = common.authenticate(ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD, {})
 
 if not uid:
-    print("Echec de connexion a Odoo")
-    exit()
+    raise Exception("Connexion Odoo échouée. Vérifie DB, username ou password.")
 
-models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
+models = xmlrpc.client.ServerProxy(f"{ODOO_URL}/xmlrpc/2/object")
 
-
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
-        print("Connecte a MQTT")
-        client.subscribe(TOPIC)
-        print(f"Abonne a : {TOPIC}")
-    else:
-        print("Erreur connexion MQTT, code:", rc)
+print("Connexion Odoo réussie")
 
 
-def on_message(client, userdata, msg):
-    payload = msg.payload.decode().strip()
-    print(f"\nMessage recu sur {msg.topic}: {payload}")
+# ==========================================================
+# FONCTIONS ODOO
+# ==========================================================
 
-    if not payload:
-        print("Payload vide, message ignore.")
+def find_patient_by_code(patient_code):
+    patient_ids = models.execute_kw(
+        ODOO_DB,
+        uid,
+        ODOO_PASSWORD,
+        "iot.patient",
+        "search",
+        [[("patient_code", "=", patient_code)]],
+        {"limit": 1},
+    )
+
+    if not patient_ids:
+        return None
+
+    return patient_ids[0]
+
+
+def update_patient_vitals(patient_id, temperature, spo2, heart_rate):
+    values = {}
+
+    if temperature is not None:
+        values["temperature"] = temperature
+
+    if spo2 is not None:
+        values["spo2"] = spo2
+
+    if heart_rate is not None:
+        values["heart_rate"] = heart_rate
+
+    if values:
+        models.execute_kw(
+            ODOO_DB,
+            uid,
+            ODOO_PASSWORD,
+            "iot.patient",
+            "write",
+            [[patient_id], values],
+        )
+
+
+def create_ecg_points(patient_id, ecg_values, heart_rate=None):
+    if not ecg_values:
         return
 
-    try:
-        data = json.loads(payload)
+    # نحذف ECG القديم باش capture تكون نظيفة
+    old_ids = models.execute_kw(
+        ODOO_DB,
+        uid,
+        ODOO_PASSWORD,
+        "iot.ecg",
+        "search",
+        [[("patient_id", "=", patient_id)]],
+    )
 
-        device_id = data.get("device_id")
-        patient_code = data.get("patient_code") or data.get("code")
-
-        temperature = float(data.get("temperature", data.get("body_temperature", 0)) or 0)
-        spo2 = float(data.get("spo2", data.get("SpO2", 0)) or 0)
-        heart_rate = int(data.get("heart_rate", data.get("pulse", 0)) or 0)
-
-        print(
-            f"Device={device_id} | Code patient={patient_code} | "
-            f"Temp={temperature} | SpO2={spo2} | BPM={heart_rate}"
+    if old_ids:
+        models.execute_kw(
+            ODOO_DB,
+            uid,
+            ODOO_PASSWORD,
+            "iot.ecg",
+            "unlink",
+            [old_ids],
         )
 
-        # Version finale : recherche par device_id.
-        # Fallback patient_code gardé seulement pour compatibilité avec anciens tests.
-        if device_id:
-            domain = [("device_id", "=", device_id)]
-        elif patient_code:
-            domain = [("patient_code", "=", patient_code)]
-        else:
-            print("Aucun device_id/patient_code dans le message. Message ignore.")
-            return
+    now = datetime.now()
 
-        patient_ids = models.execute_kw(
-            db, uid, password,
-            "iot.patient", "search",
-            [domain],
-            {"limit": 1}
-        )
-
-        if not patient_ids:
-            print("Aucun patient associe a ce device_id/code. Message ignore.")
-            print("Dans Odoo, associe le Device ID du patient, ex : RPI-001.")
-            return
-
-        patient_id = patient_ids[0]
-
-        patient_vals = {
-            "temperature": temperature,
-            "spo2": spo2,
-            "heart_rate": heart_rate,
+    for index, value in enumerate(ecg_values):
+        record = {
+            "patient_id": patient_id,
+            "ecg_value": float(value),
+            "bpm": int(heart_rate) if heart_rate is not None else 0,
+            "sample_time": (now + timedelta(seconds=index)).strftime("%Y-%m-%d %H:%M:%S"),
         }
 
         models.execute_kw(
-            db, uid, password,
-            "iot.patient", "write",
-            [[patient_id], patient_vals]
+            ODOO_DB,
+            uid,
+            ODOO_PASSWORD,
+            "iot.ecg",
+            "create",
+            [record],
         )
 
-        print(f"Patient mis a jour dans Odoo avec ID : {patient_id}")
+# ==========================================================
+# CALLBACK MQTT
+# ==========================================================
 
-        # ECG: mesure ponctuelle. Envoyer ecg_value seulement quand une mesure ECG est disponible.
-        if "ecg_value" in data and data.get("ecg_value") not in (None, ""):
-            ecg_value = float(data.get("ecg_value") or 0)
-            ecg_id = models.execute_kw(
-                db, uid, password,
-                "iot.ecg", "create",
-                [{
-                    "patient_id": patient_id,
-                    "ecg_value": ecg_value,
-                    "bpm": heart_rate,
-                }]
-            )
-            print(f"ECG cree avec ID : {ecg_id}")
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("Connexion MQTT réussie")
+        client.subscribe(MQTT_TOPIC)
+        print(f"Abonné au topic : {MQTT_TOPIC}")
+    else:
+        print(f"Erreur connexion MQTT, code : {rc}")
+
+
+def on_message(client, userdata, msg):
+    try:
+        payload = json.loads(msg.payload.decode("utf-8"))
+
+        device_id = payload.get("device_id")
+        temperature = payload.get("temperature")
+        spo2 = payload.get("spo2")
+        heart_rate = payload.get("heart_rate")
+        ecg_values = payload.get("ecg_values", [])
+
+        if not device_id:
+            print("Message ignoré : device_id manquant")
+            return
+
+        patient_code = DEVICE_PATIENT_MAP.get(device_id)
+
+        if not patient_code:
+            print(f"Device inconnu : {device_id}")
+            return
+
+        patient_id = find_patient_by_code(patient_code)
+
+        if not patient_id:
+            print(f"Patient introuvable dans Odoo : {patient_code}")
+            return
+
+        update_patient_vitals(
+            patient_id=patient_id,
+            temperature=temperature,
+            spo2=spo2,
+            heart_rate=heart_rate,
+        )
+
+        create_ecg_points(
+            patient_id=patient_id,
+            ecg_values=ecg_values,
+            heart_rate=heart_rate,
+        )
+
+        print(
+            f"Odoo mis à jour | Patient={patient_code} | "
+            f"T={temperature} °C | SpO2={spo2} % | BPM={heart_rate} | "
+            f"ECG points={len(ecg_values)}"
+        )
 
     except Exception as e:
-        print("Erreur :", e)
+        print(f"Erreur traitement MQTT → Odoo : {e}")
 
 
-client = mqtt.Client()
-client.on_connect = on_connect
-client.on_message = on_message
+# ==========================================================
+# PROGRAMME PRINCIPAL
+# ==========================================================
 
-client.connect(BROKER, PORT, 60)
-client.loop_forever()
+def main():
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
+
+    client.connect(MQTT_BROKER, MQTT_PORT, 60)
+
+    print("Bridge MQTT → Odoo démarré")
+    client.loop_forever()
+
+
+if __name__ == "__main__":
+    main()
